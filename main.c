@@ -9,15 +9,15 @@
 #define ALT_MODE        2
 #define CHANNEL         1
 #define PWM_DRV         &PWMD4
-#define DUTY_CYCLE_MAX  10000  /* 100% duty cycle */
-#define DUTY_CYCLE_MIN  1000   /* 10% duty cycle */
+#define DUTY_CYCLE_MAX  8000  /* 100% duty cycle */
+#define DUTY_CYCLE_MIN  4000   /* 10% duty cycle */
 
 /************************
  * Shell config
  ************************/
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
-static uint32_t DUTY_CYCLE_PERCENT = 5000;
+static uint32_t DUTY_CYCLE_PERCENT = 6000;
 
 static void max(BaseSequentialStream *chp, int argc, char *argv[])
 {
