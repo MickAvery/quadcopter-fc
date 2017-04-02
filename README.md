@@ -4,6 +4,9 @@
 ## Introduction
 As a student, what's the best way to get choosy firmware companies to notice you when you're not a nerd with straight-A's? Why, make a custom quadcopter flight controller, of course!
 
+## Wiki
+[I highly suggest visiting the wiki that goes more in detail on the components of the quadctoper, as well as how they are tested.](https://github.com/MickAvery/quadcopter_flight_controller/wiki)
+
 ## Components
 ### Hardware
 The main flight controller is an **STM32F407 with an ARM Cortex M4 chip**.
