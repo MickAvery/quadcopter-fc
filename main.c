@@ -72,7 +72,7 @@ static const ShellConfig shellcfg =
 {
   (BaseSequentialStream*)&SDU1,
   shellcmds
-}; 
+};
 
 /************************
  * PWM config

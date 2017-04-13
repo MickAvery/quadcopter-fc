@@ -45,7 +45,7 @@
 #define STM32_SW                            STM32_SW_PLL
 #define STM32_PLLSRC                        STM32_PLLSRC_HSE
 #define STM32_PLLM_VALUE                    8
-#define STM32_PLLN_VALUE                    336
+#define STM32_PLLN_VALUE                    320
 #define STM32_PLLP_VALUE                    2
 #define STM32_PLLQ_VALUE                    7
 #define STM32_HPRE                          STM32_HPRE_DIV1
@@ -190,7 +190,7 @@
  */
 #define STM32_ICU_USE_TIM1                  FALSE
 #define STM32_ICU_USE_TIM2                  FALSE
-#define STM32_ICU_USE_TIM3                  FALSE
+#define STM32_ICU_USE_TIM3                  TRUE
 #define STM32_ICU_USE_TIM4                  FALSE
 #define STM32_ICU_USE_TIM5                  FALSE
 #define STM32_ICU_USE_TIM8                  FALSE
@@ -221,7 +221,7 @@
 #define STM32_PWM_USE_TIM1                  FALSE
 #define STM32_PWM_USE_TIM2                  FALSE
 #define STM32_PWM_USE_TIM3                  FALSE
-#define STM32_PWM_USE_TIM4                  FALSE
+#define STM32_PWM_USE_TIM4                  TRUE
 #define STM32_PWM_USE_TIM5                  FALSE
 #define STM32_PWM_USE_TIM8                  FALSE
 #define STM32_PWM_USE_TIM9                  FALSE
@@ -250,7 +250,7 @@
 #define STM32_SERIAL_USE_USART1             FALSE
 #define STM32_SERIAL_USE_USART2             FALSE
 #define STM32_SERIAL_USE_USART3             FALSE
-#define STM32_SERIAL_USE_UART4              FALSE
+#define STM32_SERIAL_USE_UART4              TRUE
 #define STM32_SERIAL_USE_UART5              FALSE
 #define STM32_SERIAL_USE_USART6             FALSE
 #define STM32_SERIAL_USART1_PRIORITY        12
@@ -324,8 +324,8 @@
 /*
  * USB driver system settings.
  */
-#define STM32_USB_USE_OTG1                  FALSE
-#define STM32_USB_USE_OTG2                  FALSE
+#define STM32_USB_USE_OTG1                  TRUE
+#define STM32_USB_USE_OTG2                  TRUE
 #define STM32_USB_OTG1_IRQ_PRIORITY         14
 #define STM32_USB_OTG2_IRQ_PRIORITY         14
 #define STM32_USB_OTG1_RX_FIFO_SIZE         512
