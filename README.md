@@ -1,6 +1,8 @@
 # Quadcopter Flight Controller
 > Name to be determined
 
+[![Build Status](https://travis-ci.org/MickAvery/quadcopter_flight_controller.svg)](https://travis-ci.org/MickAvery/quadcopter_flight_controller)
+
 ## Introduction
 As a student, what's the best way to get choosy firmware companies to notice you when you're not a nerd with straight-A's? Why, make a custom quadcopter flight controller, of course!
 
