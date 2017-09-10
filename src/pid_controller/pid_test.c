@@ -12,12 +12,11 @@ int main(int argc, char**argv)
 
   int32_t desired_output = strtol(argv[1], NULL, 10);
   int32_t actual_output = strtol(argv[2], NULL, 10);
-  int32_t correction;
 
   printf("Desired output = %d\nActual output = %d\n\n", desired_output, actual_output);
 
   while(1) {
-    correction = pid_algorithm( desired_output, actual_output );
+    int32_t correction = pid_algorithm( desired_output, actual_output );
     printf("Calculated correction = %d\n", correction);
     actual_output += correction;
     sleep(2);
