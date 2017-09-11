@@ -10,9 +10,7 @@
 #include "ch.h"
 #include "hal.h"
 #include "chprintf.h"
-#include "l3gd20h.h"
-
-#define MAX_STRING_LEN                256U
+#include "lis3dsh.h"
 
 /****************************************
  * L3GD20H configs with SPI
@@ -21,8 +19,8 @@
 static const SPIConfig spicfg =
 {
   NULL,         /* no callback */
-  GPIOA,        /* CS line port */
-  15,           /* CS line pad number */
+  GPIOE,        /* CS line port */
+  3,            /* CS line pad number */
   /* CR1 reg */
   SPI_CR1_CPHA | SPI_CR1_CPOL | /* CPHA = 1, CPOL = 1 */
   SPI_CR1_BR_1,                 /* fPCLK prescaler, see reference manual */
@@ -30,12 +28,12 @@ static const SPIConfig spicfg =
   0
 };
 
-static L3GD20HDriver l3gd20h;
+static LIS3DSHDriver lis3dsh;
 
-static const L3GD20HConfig l3gd20hcfg =
+static const LIS3DSHConfig lis3dshcfg =
 {
-  L3GD20H_FULLSCALE_500DPS, /* set range of measurement values to +/- 500dps */
-  L3GD20H_ODR_100Hz,        /* set sampling rate of gyro to 200Hz */
+  LIS3DSH_FS_4G,       /* set range of measurement values to +/- 4G */
+  LIS3DSH_ODR_100HZ,   /* set sampling rate of acc to 100Hz */
 
   /* SPI driver pointer */
   &SPID1
@@ -84,7 +82,7 @@ _start_serial(void)
 
 int main(void) {
   uint8_t buf;
-  L3GD20HDriver *gyro_ptr = &l3gd20h;
+  LIS3DSHDriver *acc_ptr = &lis3dsh;
 
   /* initialize system */
   halInit();
@@ -94,21 +92,20 @@ int main(void) {
   _start_serial();
 
   /* activate gyroscope */
-  l3gd20hObjectInit(gyro_ptr);         /* initialize L3GD20H driver */
-  l3gd20hStart(gyro_ptr, &l3gd20hcfg); /* start L3GD20H driver */
-  l3gd20hWhoAmI(gyro_ptr, &buf);       /* verify SPI communication */
-  l3gd20hCalibrate(gyro_ptr);          /* calibrate for bias */
+  lis3dshObjectInit(acc_ptr);          /* initialize LIS3DSH driver */
+  lis3dshStart(acc_ptr, &lis3dshcfg);  /* start LIS3DSH driver */
+  lis3dshWhoAmI(acc_ptr, &buf);        /* verify SPI communication */
 
   chprintf((BaseSequentialStream*)&SD4, "WHO_AM_I = %u\r\n", buf);
 
   while (1) {
     chThdSleepMilliseconds(5);
-    if(l3gd20hIsDataReady(gyro_ptr)) {
+    if(lis3dshIsDataReady(acc_ptr)) {
       /* read from gyro */
-      float gyro_readings[L3GD20H_AXES] = {0};
-      l3gd20hReadCooked(gyro_ptr, gyro_readings);
-      chprintf((BaseSequentialStream*) &SD4, "Gx = %0.3f dps ; Gy = %0.3f dps ; Gz = %0.3f dps\r\n",
-          gyro_readings[0], gyro_readings[1], gyro_readings[2]);
+      float acc_readings[LIS3DSH_AXES] = {0.0f};
+      lis3dshGetData(acc_ptr, acc_readings);
+      chprintf((BaseSequentialStream*)&SD4, "Ax = %0.3f G ; Ay = %0.3f G ; Az = %0.3f G\r\n",
+          acc_readings[0], acc_readings[1], acc_readings[2]);
     }
   }
 

@@ -1,0 +1,5 @@
+LIS3DSH_DIR=$(PROJ_ROOT_DIR)/peripheral_devices/lis3dsh
+
+LIS3DSH_SRC=$(LIS3DSH_DIR)/lis3dsh.c
+
+LIS3DSH_INC=$(LIS3DSH_DIR)

@@ -4,6 +4,7 @@
  * \brief  ST L3GD20H MEMS gyroscope module source file
  */
 
+#include "ch.h"
 #include "hal.h"
 #include "l3gd20h.h"
 
@@ -174,7 +175,7 @@ _read_raw(L3GD20HDriver* imu_drv, int32_t axes[L3GD20H_AXES])
   osalDbgCheck(imu_drv != NULL);
   osalDbgAssert(imu_drv->state == L3GD20H_START, "L3GD20H invalid state");
 
-  int8_t buffer[2 * L3GD20H_AXES] = {0};
+  uint8_t buffer[2 * L3GD20H_AXES] = {0};
   uint8_t i;
 
   #if L3GD20H_USE_SPI
@@ -184,12 +185,12 @@ _read_raw(L3GD20HDriver* imu_drv, int32_t axes[L3GD20H_AXES])
       imu_drv,
       OUT_X_L_REG_ADDR,
       L3GD20H_MULTI_REG_READING,
-      (uint8_t*)buffer,
+      buffer,
       2 * L3GD20H_AXES);
 
   for(i = 0 ; i < L3GD20H_AXES ; i++) {
-    axes[i] |= (int32_t)buffer[i * 2]; /* least significant bits */
-    axes[i] |= (int32_t)(buffer[(i * 2) + 1] << 8); /* most significant bits */
+    int16_t temp = buffer[i * 2] + (buffer[(i * 2) + 1] << 8);
+    axes[i] = (int32_t)temp;
   }
   #elif L3GD20H_USE_I2C
     #error "I2C interfacing not yet implemented"
@@ -232,7 +233,7 @@ _start_gyroscope(L3GD20HDriver* imu_drv)
   _set_bits_in_reg(imu_drv, CTRL1_ADDR, tx_frame);
 
   /* config CTRL4 for fullscale config */
-  tx_frame = fs;
+  tx_frame = fs | BDU;
   _set_bits_in_reg(imu_drv, CTRL4_ADDR, tx_frame);
 }
 
@@ -448,6 +449,7 @@ void l3gd20hCalibrate(L3GD20HDriver *l3gd20h_drv_p)
       raw_data[L3GD20H_Z_AXIS] += buf[L3GD20H_Z_AXIS];
       i++;
     }
+    chThdSleepMilliseconds(5);
   }
 
   /* get average of all raw data readings,
