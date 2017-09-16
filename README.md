@@ -17,6 +17,32 @@ The other components of the flight controller are subject to change, so I won't 
 The embedded control software is developed using ChibiOS open-source RTOS.
 
 ## Build
+### Dependencies
+1. OpenOCD
+
+`apt/brew install openocd`
+
+2. ARM cross-compiler and debugger
+
+`apt/brew install gcc-arm-none-eabi && apt/brew install gdb-arm-none-eabi`
+
+3. Autoreconf (for building CppUTest)
+
+`apt/brew install automake autoconf libtool`
+
+### After cloning
+
+Clone all submodules with `git submodule update --init --recursive`
+
+### Building CppUTest
+```
+$ cd <proj_root_dir>/third_party/CppUTest/cpputest_build
+$ autoreconf .. -i
+$ ../configure
+$ make
+```
+
+### Building and flashing project
 I asume you have to following packages:
 1. OpenOCD on-chip debugger
 2. ARM cross-compiler and debug tools (I'll make this more specific later on)

@@ -1,6 +1,6 @@
 [submodule "third_party/ChibiOS"]
 	path = third_party/ChibiOS
 	url = https://github.com/ChibiOS/ChibiOS.git
-[submodule "third_party/GoogleTest"]
-	path = third_party/GoogleTest
-	url = https://github.com/google/googletest.git
+[submodule "third_party/CppUTest"]
+	path = third_party/CppUTest
+	url = https://github.com/cpputest/cpputest.git
