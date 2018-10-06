@@ -1,0 +1,9 @@
+DRIVERPATH = $(ROOT)/drivers
+
+include $(DRIVERPATH)/lsm6dsl/lsm6dsl.mk
+
+DRIVERSRC = $(LSM6DSLSRC)
+
+DRIVERINC = $(LSM6DSLINC)
+
+DRIVERTESTS = $(LSM6DSL_PATH)/test

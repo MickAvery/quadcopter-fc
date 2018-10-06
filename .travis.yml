@@ -8,8 +8,7 @@ addons:
       - cppcheck
 
 script:
+  - make install
   - make
-  - make -C test_hardware/PWM_TO_ESC/
-  - make -C test_hardware/L3GD20H_MEMS_GYRO/SPI/
-  - make -C test_hardware/LIS3DSH_MEMS_ACC/
+  - make check
   - make cppcheck
