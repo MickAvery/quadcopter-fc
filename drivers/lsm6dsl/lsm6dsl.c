@@ -7,15 +7,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "ch.h"
 #include "osal.h"
 #include "lsm6dsl.h"
-
-lsm6dsl_handle_t LSM6DSL_HANDLE =
-{
-  NULL,
-  LSM6DSL_STATE_STOP,
-  0.0f, 0.0f
-};
 
 /**
  * \brief Accelerometer sensitivities corresponding to
@@ -38,25 +32,40 @@ static float gyro_sensitivities_list[LSM6DSL_GYRO_FS_MAX] =
 /**
  * \brief Global timeout for i2c calls
  */
-static systime_t timeout = MS2ST(500U);
+static systime_t timeout = MS2ST(10U);
 
 /**
  * \brief LSM6DSL slave address when SDA is grounded
  */
-uint8_t lsm6dsl_addr = 0b01101010;
+static uint8_t lsm6dsl_addr = 0b01101010;
 
 /*****************************************
  * Register addresses
  *****************************************/
 
-static uint8_t ctrl1_xl_addr   = 0x10U;
-static uint8_t ctrl2_g_addr    = 0x11U;
-static uint8_t status_addr     = 0x1EU;
-static uint8_t data_start_addr = 0x22U;
+static uint8_t ctrl1_xl_addr      = 0x10U;
+static uint8_t ctrl2_g_addr       = 0x11U;
+// static uint8_t ctrl10_c_addr      = 0x19U;
+static uint8_t status_addr        = 0x1EU;
+static uint8_t data_start_addr    = 0x22U;
+static uint8_t master_config_addr = 0x1AU;
 
 /*****************************************
  * API
  *****************************************/
+
+/**
+ * \brief Initialize driver handle
+ *
+ * \param[out] handle - LSM6DSL handle
+ */
+void lsm6dslObjectInit(lsm6dsl_handle_t* handle)
+{
+  chDbgCheck(handle!= NULL);
+
+  handle->state = LSM6DSL_STATE_STOP;
+  handle->cfg = NULL;
+}
 
 /**
  * \brief Start LSM6DSL device
@@ -162,6 +171,52 @@ lsm6dsl_status_t lsm6dslRead(lsm6dsl_handle_t* handle, lsm6dsl_sensor_readings_t
     vals->acc_z = rawbytes[5] * handle->accel_sensitivity;
 
     ret = LSM6DSL_OK;
+  }
+
+  i2cReleaseBus(i2c);
+
+  return ret;
+}
+
+/**
+ * \brief Enable I2C passthrough to allow host MCU to communicate with external magnetometer
+ *
+ * \param[in] handle - LSM6DSL handle
+ *
+ * \return Driver status
+ * \retval LSM6DSL_OK if call successful
+ */
+lsm6dsl_status_t lsm6dslPassthroughEnable(lsm6dsl_handle_t* handle)
+{
+  chDbgCheck(handle != NULL);
+
+  chDbgAssert(handle->state != LSM6DSL_STATE_PASSTHROUGH, "lsm6dslPassthroughEnable called in invalid state");
+
+  lsm6dsl_status_t ret = LSM6DSL_SERIAL_ERROR;
+
+  I2CDriver* i2c = handle->cfg->i2c_drv;
+
+  uint8_t rx = 0U;
+
+  i2cAcquireBus(i2c);
+
+  if(i2cMasterTransmitTimeout(i2c, lsm6dsl_addr, &master_config_addr, 1, &rx, 1, timeout) == MSG_OK) {
+    rx |= (1 << 4);
+
+    uint8_t tx[2] = {master_config_addr, rx};
+
+    if(i2cMasterTransmitTimeout(i2c, lsm6dsl_addr, tx, 2, NULL, 0, timeout) == MSG_OK) {
+      /* 5ms delay stated in datasheet */
+      chThdSleepMilliseconds(5U);
+
+      tx[1] &= ~((1) | (1 << 3) | (1 << 4)); /* reset MASTER_ON, PULL_UP_EN, START_CONFIG */
+      tx[1] |= (1 << 2); /* set PASS_THROUGH_MODE */
+
+      if(i2cMasterTransmitTimeout(i2c, lsm6dsl_addr, tx, 2, NULL, 0, timeout) == MSG_OK) {
+        handle->state = LSM6DSL_STATE_PASSTHROUGH;
+        ret = LSM6DSL_OK;
+      }
+    }
   }
 
   i2cReleaseBus(i2c);

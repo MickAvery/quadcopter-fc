@@ -11,8 +11,3 @@ void chSysHalt(const char* reason) {
 
   while(true) { /* infinite loop */ }
 }
-
-void chThdSleep(systime_t time)
-{
-  (void) time;
-}

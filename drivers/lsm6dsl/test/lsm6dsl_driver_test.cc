@@ -70,7 +70,7 @@ static void expect_startup_sequence(
 
 TEST_GROUP(LSM6DSLStartTestGroup)
 {
-  lsm6dsl_handle_t* lsm6dsl = &LSM6DSL_HANDLE;
+  lsm6dsl_handle_t lsm6dsl;
   const lsm6dsl_config_t cfg = {
     &i2c,
     LSM6DSL_12_5_Hz,
@@ -80,7 +80,9 @@ TEST_GROUP(LSM6DSLStartTestGroup)
 
   void setup()
   {
-    lsm6dsl->state = LSM6DSL_STATE_STOP; /* TODO: maybe better to make objectInit() fxn */
+    lsm6dslObjectInit(&lsm6dsl);
+    LONGS_EQUAL(LSM6DSL_STATE_STOP, lsm6dsl.state);
+    POINTERS_EQUAL(NULL, lsm6dsl.cfg);
   }
 
   void teardown()
@@ -96,13 +98,14 @@ TEST(LSM6DSLStartTestGroup, lsm6dslStartSuccess)
 
   expect_startup_sequence(&cfg, membuf, 16);
 
-  LONGS_EQUAL(LSM6DSL_OK, lsm6dslStart(lsm6dsl, &cfg));
-  LONGS_EQUAL(LSM6DSL_STATE_RUNNING, lsm6dsl->state);
+  LONGS_EQUAL(LSM6DSL_OK, lsm6dslStart(&lsm6dsl, &cfg));
+  LONGS_EQUAL(LSM6DSL_STATE_RUNNING, lsm6dsl.state);
+  POINTERS_EQUAL(&cfg, lsm6dsl.cfg)
 }
 
 TEST_GROUP(LSM6DSLReadTestGroup)
 {
-  lsm6dsl_handle_t* lsm6dsl = &LSM6DSL_HANDLE;
+  lsm6dsl_handle_t lsm6dsl;
   const lsm6dsl_config_t cfg = {
     &i2c,
     LSM6DSL_12_5_Hz,
@@ -113,8 +116,8 @@ TEST_GROUP(LSM6DSLReadTestGroup)
   void setup()
   {
     mock().disable();
-    lsm6dsl->state = LSM6DSL_STATE_STOP; /* TODO: maybe better to make objectInit() fxn */
-    (void)lsm6dslStart(lsm6dsl, &cfg);
+    lsm6dslObjectInit(&lsm6dsl);
+    (void)lsm6dslStart(&lsm6dsl, &cfg);
     mock().enable();
   }
 
@@ -153,7 +156,7 @@ TEST(LSM6DSLReadTestGroup, lsm6dslTestValues)
 
   mock().expectOneCall("i2cReleaseBus");
 
-  LONGS_EQUAL(LSM6DSL_OK, lsm6dslRead(lsm6dsl, &readings));
+  LONGS_EQUAL(LSM6DSL_OK, lsm6dslRead(&lsm6dsl, &readings));
 
   DOUBLES_EQUAL(gyro_values[0], readings.gyro_x / 1000.0, 0.1f);
   DOUBLES_EQUAL(gyro_values[1], readings.gyro_y / 1000.0, 0.1f);
@@ -176,7 +179,62 @@ TEST(LSM6DSLReadTestGroup, lsm6dslReadingsNotReady)
 
   mock().expectOneCall("i2cReleaseBus");
 
-  LONGS_EQUAL(LSM6DSL_DATA_NOT_AVAILABLE, lsm6dslRead(lsm6dsl, &readings));
+  LONGS_EQUAL(LSM6DSL_DATA_NOT_AVAILABLE, lsm6dslRead(&lsm6dsl, &readings));
+}
+
+TEST_GROUP(LSM6DSLPassThroughTestGroup)
+{
+  lsm6dsl_handle_t lsm6dsl;
+  const lsm6dsl_config_t cfg = {
+    &i2c,
+    LSM6DSL_12_5_Hz,
+    LSM6DSL_ACCEL_2G,
+    LSM6DSL_GYRO_250DPS
+  };
+
+  void setup()
+  {
+    mock().disable();
+    lsm6dslObjectInit(&lsm6dsl);
+    (void)lsm6dslStart(&lsm6dsl, &cfg);
+    mock().enable();
+  }
+
+  void teardown()
+  {
+    mock().checkExpectations();
+    mock().clear();
+  }
+};
+
+TEST(LSM6DSLPassThroughTestGroup, lsm6dslPassThroughSuccessTest)
+{
+  uint8_t membuf[16] = {0};
+
+  mock().expectOneCall("i2cAcquireBus");
+
+  /* read MASTER_CONFIG and set START_CONFIG bit */
+  membuf[0] = 0x1AU; /* MASTER_CONFIG address */
+  membuf[1] = 0x00U; /* MASTER_CONFIG default value */
+  expect_i2c_write(&membuf[0], 1, &membuf[1], 1, lsm6dsl_addr, MSG_OK);
+
+  membuf[2] = 0x1AU; /* MASTER_CONFIG address */
+  membuf[3] = membuf[1] | (1 << 4); /* setting START_CONFIG */
+  expect_i2c_write(&membuf[2], 2, NULL, 0, lsm6dsl_addr, MSG_OK);
+
+  /* reset MASTER_ON, START_CONFIG, and PULL_UP_EN
+   * set PASS_THROUGH_MODE
+   */
+  membuf[4] = 0x1AU;
+  membuf[5] = membuf[3] & ~(1 | (1 << 4) | (1 << 3));
+  membuf[5] |= (1 << 2);
+
+  expect_i2c_write(&membuf[4], 2, NULL, 0, lsm6dsl_addr, MSG_OK);
+
+  mock().expectOneCall("i2cReleaseBus");
+
+  LONGS_EQUAL(LSM6DSL_OK, lsm6dslPassthroughEnable(&lsm6dsl));
+  LONGS_EQUAL(LSM6DSL_STATE_PASSTHROUGH, lsm6dsl.state);
 }
 
 int main(int argc, char** argv)
