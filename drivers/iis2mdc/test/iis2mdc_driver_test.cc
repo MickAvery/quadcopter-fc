@@ -37,10 +37,6 @@ static void expect_startup_sequence(
 {
   membuf[0] = cfg_a_addr;
   membuf[1] = 0b00000011; /* default register value */
-
-  uint8_t rx = membuf[1] & 0; /* clear bits[1:0] for continuous mode */
-  rx |= 
-
   membuf[2] = cfg_a_addr;
   membuf[3] = cfg->odr << 2;
 
