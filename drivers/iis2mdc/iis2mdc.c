@@ -5,6 +5,7 @@
  */
 
 #include <stddef.h>
+#include <string.h>
 #include "osal.h"
 #include "iis2mdc.h"
 
@@ -12,8 +13,9 @@ static i2caddr_t iis2mdc_addr = 0b00011110;
 
 static systime_t timeout = MS2ST(10U);
 
+static uint8_t offset_x_reg_l_addr = 0x45U;
 static uint8_t status_addr         = 0x67U;
-static uint8_t outx_l_addr = 0x68U;
+static uint8_t outx_l_addr         = 0x68U;
 static uint8_t cfg_reg_a_addr      = 0x60U;
 
 static uint8_t zxyda_flag = (1 << 3);
@@ -85,6 +87,10 @@ iis2mdc_status_t iis2mdcStart(iis2mdc_handle_t* handle, const iis2mdc_config_t* 
  */
 iis2mdc_status_t iis2mdcRead(iis2mdc_handle_t* handle, iis2mdc_sensor_readings_t* vals)
 {
+  chDbgCheck((handle != NULL) && (vals != NULL));
+
+  chDbgAssert(handle->state == IIS2MDC_RUNNING, "iis2mdcRead called from invalid state");
+
   iis2mdc_status_t ret = IIS2MDC_STATUS_SERIAL_ERROR;
 
   I2CDriver* i2c = handle->cfg->i2c;
@@ -105,6 +111,51 @@ iis2mdc_status_t iis2mdcRead(iis2mdc_handle_t* handle, iis2mdc_sensor_readings_t
 
       ret = IIS2MDC_STATUS_OK;
     }
+  }
+
+  i2cReleaseBus(i2c);
+
+  return ret;
+}
+
+/**
+ * \brief Calibrate magnetometer with calculated offsets on all axes
+ *
+ * Calibrate magnetometer with observed offsets. After calibration,
+ * output registers will be:
+ *   mag_reg = mag_reg - offset
+ *
+ * \param[in] handle   - driver handle
+ * \param[in] x_offset - x-axis offset in mgauss
+ * \param[in] y_offset - y-axis offset in mgauss
+ * \param[in] z_offset - z-axis offset in mgauss
+ *
+ * \return Driver status
+ * \retval IIS2MDC_STATUS_OK if call successful
+ */
+iis2mdc_status_t iis2mdcCalibrate(iis2mdc_handle_t* handle, float x_offset, float y_offset, float z_offset)
+{
+  chDbgCheck(handle != NULL);
+
+  iis2mdc_status_t ret = IIS2MDC_STATUS_SERIAL_ERROR;
+
+  I2CDriver* i2c = handle->cfg->i2c;
+
+  int16_t raw_offsets[3] = {
+    (int16_t)(x_offset / sensitivity),
+    (int16_t)(y_offset / sensitivity),
+    (int16_t)(z_offset / sensitivity)
+  };
+
+  uint8_t tx[7] = {0U};
+  tx[0] = offset_x_reg_l_addr;
+
+  (void)memcpy(&tx[1], raw_offsets, sizeof(raw_offsets));
+
+  i2cAcquireBus(i2c);
+
+  if(i2cMasterTransmitTimeout(i2c, iis2mdc_addr, tx, sizeof(tx), NULL, 0, timeout) == MSG_OK) {
+    ret = IIS2MDC_STATUS_OK;
   }
 
   i2cReleaseBus(i2c);

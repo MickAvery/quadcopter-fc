@@ -10,7 +10,7 @@ endif
 
 # C specific options here (added to USE_OPT).
 ifeq ($(USE_COPT),)
-  USE_COPT = 
+  USE_COPT = -std=iso9899:1999
 endif
 
 # C++ specific options here (added to USE_OPT).
@@ -124,6 +124,7 @@ CSRC = $(STARTUPSRC) \
        $(STREAMSSRC) \
        $(SHELLSRC) \
        $(DRIVERSRC) \
+       src/imu_engine.c \
        main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
@@ -157,7 +158,7 @@ ASMXSRC = $(STARTUPASM) $(PORTASM) $(OSALASM)
 INCDIR = $(CHIBIOS)/os/license \
          $(STARTUPINC) $(KERNINC) $(PORTINC) $(OSALINC) \
          $(HALINC) $(PLATFORMINC) $(BOARDINC) $(TESTINC) \
-         $(STREAMSINC) $(SHELLINC) $(DRIVERINC) \
+         $(STREAMSINC) $(SHELLINC) $(DRIVERINC) ./inc \
          $(CHIBIOS)/os/various
 
 #
@@ -220,7 +221,7 @@ UINCDIR =
 ULIBDIR =
 
 # List all user libraries here
-ULIBS =
+ULIBS = -lm
 
 TESTLIBDIR = $(CPPUTEST)/cpputest_build/lib \
   $(CPPUTEST)/cpputest_build/src/CppUTest \
