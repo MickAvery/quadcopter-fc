@@ -12,6 +12,7 @@
 #include "chprintf.h"
 
 #include "imu_engine.h"
+#include "radio_tx_rx.h"
 #include "pinconf.h"
 
 static imu_engine_handle_t imu_engine;
@@ -54,6 +55,34 @@ static void csv(BaseSequentialStream* chp, int argc, char* argv[])
       euler[x], euler[y], euler[z]);
 
     chThdSleepMilliseconds(3);
+  }
+}
+
+static void ppm_printout(BaseSequentialStream* chp, int argc, char* argv[])
+{
+  (void)argc;
+  (void)argv;
+
+  while(true) {
+
+    /* return if escape key ^C is pressed */
+    if(((SerialDriver*)chp)->vmt->gett(chp, 100) == 3) {
+      return;
+    }
+
+    icucnt_t channels[RADIO_TXRX_CHANNELS] = {0U};
+
+    radioTxRxReadInputs(&RADIO_TXRX, channels);
+
+    for(size_t i = 0U ; i < RADIO_TXRX_CHANNELS ; i++) {
+      chprintf(chp, "%5u", channels[i]);
+
+      if(i + 1 < RADIO_TXRX_CHANNELS) {
+        chprintf(chp, "\t");
+      } else {
+        chprintf(chp, "\n");
+      }
+    }
   }
 }
 
@@ -162,6 +191,7 @@ static void mag_calibrate(BaseSequentialStream* chp, int argc, char* argv[])
 static const ShellCommand shellcmds[] =
 {
   {"csv", csv},
+  {"ppm", ppm_printout},
   {"mag_calibrate", mag_calibrate},
   {NULL, NULL}
 };
@@ -202,8 +232,12 @@ int main(void) {
   i2cStart(&I2CD2, &i2ccfg);
 
   /* start IMU Engine */
-  imuEngineInit(&imu_engine);
-  imuEngineStart(&imu_engine);
+  // imuEngineInit(&imu_engine);
+  // imuEngineStart(&imu_engine);
+
+  /* start Radio Transceiver Input Capture */
+  radioTxRxInit(&RADIO_TXRX);
+  radioTxRxStart(&RADIO_TXRX);
 
   /* loop for shell thread */
   while (1) {
