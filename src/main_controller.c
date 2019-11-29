@@ -11,6 +11,10 @@
 #include "imu_engine.h"
 #include "radio_tx_rx.h"
 #include "motor_driver.h"
+#include "pid.h"
+
+// debug use only TODO: remove when done
+#include "chprintf.h"
 
 /**
  * Global main controller handle
@@ -47,6 +51,34 @@ static hysteresis_range_t hysteresis_ranges[HYSTERESIS_STATES] =
   /* MIN = 15%, MAX = 100% */
   { 1500U, 10000U } /* liftoff */
 };
+
+/**
+ * define PID controllers
+ */
+static pid_ctrl_handle_t roll_pid;
+static pid_ctrl_handle_t pitch_pid;
+// static pid_ctrl_handle_t yaw_pid;
+
+/**
+ * \notapi
+ * \brief Get desired euler angle setpoint based on signal from transceiver
+ */
+static float signal_to_euler_angle(uint32_t signal)
+{
+  float percent = (float)signal / 100.0f / 100.0f;
+
+  /* TODO: magic numbers */
+  return percent * (30.0f - (-30.0f)) + (-30.0f);
+}
+
+/**
+ * \notapi
+ * \brief Invert the signal coming from the transceiver
+ */
+static inline uint32_t signal_invert(uint32_t signal)
+{
+  return 10000U - signal;
+}
 
 /**
  * Main Controller Thread.
@@ -101,30 +133,76 @@ THD_FUNCTION(mainControllerThread, arg)
 
     radioTxRxReadInputs(&RADIO_TXRX, channels);
 
-    /* hysteresis check */
     throttle_signal = channels[RADIO_TXRX_THROTTLE];
 
-    if(throttle_signal > hysteresis_ranges[flight_state].max) {
+    /**
+     * Flight state machine
+     */
+    switch(flight_state)
+    {
+      case GROUNDED:
+      {
 
-      /* move up next flight state */
-      flight_state++;
+        /* don't drive the motors */
+        for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++) {
+          duty_cycles[i] = 0U;
+        }
 
-    } else if(throttle_signal < hysteresis_ranges[flight_state].min) {
+        /* reset PID controllers */
+        pidReset(&roll_pid);
+        pidReset(&pitch_pid);
+        // pidReset(&yaw_pid);
 
-      /* move down previous flight state */
-      flight_state--;
+        /* perform hysteresis */
+        if(throttle_signal > hysteresis_ranges[GROUNDED].max) {
+          flight_state = FLYING;
+        }
 
+        break;
+      }
+
+      case FLYING:
+      {
+        /* determine setpoints */
+        uint32_t roll_signal = channels[RADIO_TXRX_ROLL];
+        uint32_t pitch_signal = signal_invert(channels[RADIO_TXRX_PITCH]); /* invert just like in fps games */
+        // uint32_t yaw_signal = channels[RADIO_TXRX_YAW];
+
+        float roll_setpoint = signal_to_euler_angle(roll_signal);
+        float pitch_setpoint = signal_to_euler_angle(pitch_signal);
+
+        /* read imu data */
+        float euler_angles[IMU_DATA_AXES] = {0.0f};
+        imuEngineGetData(&IMU_ENGINE, euler_angles, IMU_ENGINE_EULER);
+
+        /* run PID control loop  */
+        float roll_correction = pidCompute(&roll_pid, roll_setpoint, euler_angles[IMU_ENGINE_ROLL]);
+        float pitch_correction = pidCompute(&pitch_pid, pitch_setpoint, euler_angles[IMU_ENGINE_PITCH]);
+
+        /* convert correction to PWM duty cycles */
+        (void)roll_correction;
+        (void)pitch_correction;
+
+        for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++) {
+          duty_cycles[i] = channels[RADIO_TXRX_THROTTLE];
+        }
+
+        /* perform hysteresis */
+        if(throttle_signal < hysteresis_ranges[FLYING].min) {
+          flight_state = GROUNDED;
+        }
+
+        break;
+      }
+
+      default:
+        break;
     }
 
-    for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++) {
-
-      duty_cycles[i] = (flight_state == FLYING) ? channels[RADIO_TXRX_THROTTLE] : 0U;
-
-    }
-
+    /* drive motors with appropriate duty cycles */
     motorDriverSetDutyCycles(&MOTOR_DRIVER, duty_cycles);
 
-    chThdSleepMilliseconds(10);
+    chThdSleepMilliseconds(10U);
   }
 }
 
@@ -135,6 +213,11 @@ THD_FUNCTION(mainControllerThread, arg)
 void mainControllerInit(main_ctrl_handle_t* handle)
 {
   osalDbgCheck(handle != NULL);
+
+  /* initialize our PID controllers */
+  pidInit(&roll_pid,  1.0f, 0.1f, 0.05f);
+  pidInit(&pitch_pid, 1.0f, 0.1f, 0.05f);
+  // pidInit(&yaw_pid,   1.0f, 0.0f, 1.0f);
 
   handle->state = MAIN_CTRL_STOPPED;
 }
