@@ -43,17 +43,43 @@ typedef struct
 static hysteresis_range_t hysteresis_ranges[HYSTERESIS_STATES] =
 {
   /* MIN = 0%, MAX = 25% */
-  { 0U,    2500U }, /* grounded */
+  { 0U,    1500U }, /* grounded */
 
   /* MIN = 15%, MAX = 100% */
-  { 1500U, 10000U } /* liftoff */
+  { 1000U, 10000U } /* liftoff */
 };
+
+/* TODO: maybe put these in a config file? */
+#define EULER_ANGLE_MAX 30.0f
+#define EULER_ANGLE_MIN -30.0f
+static float PWM_MAX = 10.0f;
+static float PWM_MIN = -10.0f;
 
 /**
  * define PID controllers
  */
 static pid_ctrl_handle_t roll_pid;
+static const pid_cfg_t roll_pid_cfg =
+{
+  /* PID constants */
+  3.0f, 5.5f, 4.0f,
+
+  true, /* clamping enabled */
+  EULER_ANGLE_MAX, /* upper saturation point */
+  EULER_ANGLE_MIN /* lower saturation point */
+};
+
 static pid_ctrl_handle_t pitch_pid;
+static const pid_cfg_t pitch_pid_cfg =
+{
+  /* PID constants */
+  3.0f, 5.5f, 4.0f,
+
+  true, /* clamping enabled */
+  EULER_ANGLE_MAX, /* upper saturation point */
+  EULER_ANGLE_MIN /* lower saturation point */
+};
+
 // static pid_ctrl_handle_t yaw_pid;
 
 /**
@@ -62,19 +88,22 @@ static pid_ctrl_handle_t pitch_pid;
  */
 static float signal_to_euler_angle(uint32_t signal)
 {
-  float percent = (float)signal / 100.0f / 100.0f;
+  float percent = (float)signal / 10000.0f; // (signal / 100 / 100)
 
-  /* TODO: magic numbers */
-  return percent * (30.0f - (-30.0f)) + (-30.0f);
+  /* normalize */
+  return percent * (EULER_ANGLE_MAX - EULER_ANGLE_MIN) + EULER_ANGLE_MIN;
 }
 
 /**
  * \notapi
- * \brief Invert the signal coming from the transceiver
+ * \brief Get desired PWM duty cycle fed to motors from euler angle
  */
-static inline uint32_t signal_invert(uint32_t signal)
+static int32_t euler_angle_to_signal(float angle)
 {
-  return 10000U - signal;
+  /* normalize */
+  float percent = (angle - EULER_ANGLE_MIN) / (EULER_ANGLE_MAX - EULER_ANGLE_MIN) * (PWM_MAX - PWM_MIN) + PWM_MIN;
+
+  return (int32_t)(percent * 100.0f);
 }
 
 /**
@@ -162,7 +191,7 @@ THD_FUNCTION(mainControllerThread, arg)
       {
         /* determine setpoints */
         uint32_t roll_signal = channels[RADIO_TXRX_ROLL];
-        uint32_t pitch_signal = signal_invert(channels[RADIO_TXRX_PITCH]); /* invert just like in fps games */
+        uint32_t pitch_signal = channels[RADIO_TXRX_PITCH];
         // uint32_t yaw_signal = channels[RADIO_TXRX_YAW];
 
         float roll_setpoint = signal_to_euler_angle(roll_signal);
@@ -173,15 +202,31 @@ THD_FUNCTION(mainControllerThread, arg)
         imuEngineGetData(&IMU_ENGINE, euler_angles, IMU_ENGINE_EULER);
 
         /* run PID control loop  */
-        float roll_correction = pidCompute(&roll_pid, roll_setpoint, euler_angles[IMU_ENGINE_ROLL]);
-        float pitch_correction = pidCompute(&pitch_pid, pitch_setpoint, euler_angles[IMU_ENGINE_PITCH]);
+        float roll_correct_angle = pidCompute(&roll_pid, roll_setpoint, euler_angles[IMU_ENGINE_ROLL]);
+        float pitch_correct_angle = pidCompute(&pitch_pid, pitch_setpoint, euler_angles[IMU_ENGINE_PITCH]);
 
         /* convert correction to PWM duty cycles */
-        (void)roll_correction;
-        (void)pitch_correction;
+        int32_t roll_correct_pwm = euler_angle_to_signal(roll_correct_angle);
+        int32_t pitch_correct_pwm = euler_angle_to_signal(pitch_correct_angle);
 
+        /**
+         * https://robotics.stackexchange.com/questions/2964/quadcopter-pid-output?lq=1
+         */
         for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++) {
-          duty_cycles[i] = channels[RADIO_TXRX_THROTTLE];
+          uint32_t pwm = 0U;
+          uint32_t throttle = channels[RADIO_TXRX_THROTTLE];
+
+          if(i == MOTOR_DRIVER_NW) {
+            pwm = throttle + (pitch_correct_pwm / 2) - (roll_correct_pwm / 2);
+          } else if(i == MOTOR_DRIVER_NE) {
+            pwm = throttle + (pitch_correct_pwm / 2) + (roll_correct_pwm / 2);
+          } else if(i == MOTOR_DRIVER_SE) {
+            pwm = throttle - (pitch_correct_pwm / 2) + (roll_correct_pwm / 2);
+          } else if(i == MOTOR_DRIVER_SW) {
+            pwm = throttle - (pitch_correct_pwm / 2) - (roll_correct_pwm / 2);
+          }
+
+          duty_cycles[i] = pwm;
         }
 
         /* perform hysteresis */
@@ -212,8 +257,8 @@ void mainControllerInit(main_ctrl_handle_t* handle)
   osalDbgCheck(handle != NULL);
 
   /* initialize our PID controllers */
-  pidInit(&roll_pid,  1.0f, 0.1f, 0.05f);
-  pidInit(&pitch_pid, 1.0f, 0.1f, 0.05f);
+  pidInit(&roll_pid,  &roll_pid_cfg);
+  pidInit(&pitch_pid, &pitch_pid_cfg);
   // pidInit(&yaw_pid,   1.0f, 0.0f, 1.0f);
 
   handle->state = MAIN_CTRL_STOPPED;
