@@ -15,6 +15,8 @@
 #include "motor_driver.h"
 #include "pid.h"
 #include "chprintf.h"
+#include "fcconf.h"
+#include "utils.h"
 
 /**
  * Global main controller handle
@@ -32,115 +34,89 @@ typedef enum
   CALIBRATING  /*!< calibrating accelerometer and gyroscope */
 } fc_states_t;
 
-/* TODO: maybe put these in a config file? */
-#define THROTTLE_MIN  200 /* /100 = % */
-#define BODY_TILT_MAX 45.0f
-#define PID_ITERM_MAX 400.0f
+/* max allowable body tilt about roll and pitch */
+static float body_tilt_max = (float)BODY_TILT_MAX;
 
-/* TODO: to config file */
-#define RC_EXPO             0.0f
-#define RC_RATE             0.80f
-#define SUPER_RATE          0.65f
-#define RC_RATE_INCREMENTAL 14.54f
-#define PID_SUM_LIMIT       500.0f
-#define power3(x) (x*x*x)
+/* PID level strength, when using betaflight ANGLE mode */
+static float pid_level_strength = (float)PID_ROLL_KP / 10.0f;
 
-#define CALIBRATION_NUM_DATAPOINTS 256U /*!< When calibrating, read these many datapoints to compute average */
+/* RC rates */
+static float rc_expo    = (float)RC_EXPO / 100.0f;
+static float rc_rate    = (float)RC_RATE / 100.0f;
+static float super_rate = (float)SUPER_RATE / 100.0f;
+// static float rc_rate_incremental = (float)RC_RATE_INCREMENTAL / 100.0f;
+
+/* max PID sums for driving motors */
+static float pid_sum_limit = (float)PID_SUM_LIMIT;
+
+/* Controller loop periods based on state */
+static uint32_t imu_sampling_period_us = (uint32_t)(1.0f / ((float)IMU_ENGINE_SAMPLING_RATE / (1000.0f*1000.0f)));
+static uint32_t pid_period_us = (uint32_t)(1.0f / ((float)PID_FREQUENCY / (1000.0f*1000.0f)));
+
+/* When calibrating, read these many datapoints to compute average */
+#define CALIBRATION_NUM_DATAPOINTS 256U
 
 /**
- * define PID controllers
+ * Roll PID configs
  */
 static pid_ctrl_handle_t roll_pid;
 static const pid_cfg_t roll_pid_cfg =
 {
-  /* PID constants */
-  10.0f, 0.0f, 0.0f, 0.0f, // TODO: coefficients, config file!
-
-  1e-3f,                  // TODO: frequency, config file!
-
-  PID_ITERM_MAX /* I-term max for saturation */
+  .Kp        = (float)PID_ROLL_KP * PTERM_SCALE,
+  .Ki        = (float)PID_ROLL_KI * ITERM_SCALE,
+  .Kd        = (float)PID_ROLL_KD * DTERM_SCALE,
+  .dT        = 1.0f / (float)PID_FREQUENCY,
+  .iterm_max = (float)PID_ROLL_ITERM_MAX /* I-term max for saturation */
 };
 
+/**
+ * Pitch PID configs
+ */
 static pid_ctrl_handle_t pitch_pid;
 static const pid_cfg_t pitch_pid_cfg =
 {
-  /* PID constants */
-  3.0f, 5.5f, 4.0f, 0.0f, // TODO: coefficients, config file!
-
-  1e-3f,                  // TODO: frequency, config file!
-
-  PID_ITERM_MAX /* I-term max for saturation */
+  .Kp        = (float)PID_PITCH_KP * PTERM_SCALE,
+  .Ki        = (float)PID_PITCH_KI * ITERM_SCALE,
+  .Kd        = (float)PID_PITCH_KD * DTERM_SCALE,
+  .dT        = 1.0f / (float)PID_FREQUENCY,
+  .iterm_max = (float)PID_PITCH_ITERM_MAX /* I-term max for saturation */
 };
 
+/**
+ * Yaw PID configs
+ */
 static pid_ctrl_handle_t yaw_pid;
 static const pid_cfg_t yaw_pid_cfg =
 {
-  /* PID constants */
-  10.0f, 0.0f, 0.0f, 0.0f, // TODO: coefficients, config file!
-
-  1e-3f,                  // TODO: frequency, config file!
-
-  PID_ITERM_MAX /* I-term max for saturation */
+  .Kp        = (float)PID_YAW_KP * PTERM_SCALE,
+  .Ki        = (float)PID_YAW_KI * ITERM_SCALE,
+  .Kd        = (float)PID_YAW_KD * DTERM_SCALE,
+  .dT        = 1.0f / (float)PID_FREQUENCY,
+  .iterm_max = (float)PID_YAW_ITERM_MAX /* I-term max for saturation */
 };
 
-// TODO: Put into library!
 /**
- * @brief Set constraint on floating-point input, saturate if below or above minimum or maximum respectively
- * 
- * @param in  - Input to constrain
- * @param min - Minimum
- * @param max - Maximum
- * @return float
- */
-static float constrainf(float in, float min, float max)
-{
-  if(in < min)
-    return min;
-  if(in > max)
-    return max;
-  return in;
-}
-
-// TODO: Put into library!
-/**
- * @brief Set constraint on integer input, saturate if below or above minimum or maximum respectively
- * 
- * @param in 
- * @param min 
- * @param max 
- * @return int32_t 
- */
-static int32_t constrain(int32_t in, int32_t min, int32_t max)
-{
-  if(in < min)
-    return min;
-  if(in > max)
-    return max;
-  return in;
-}
-
-/**
- * @brief 
- * 
- * @param rc_setpoint 
- * @return float 
+ * \notapi
+ * \brief Calculate setpoint angular velocity rate based on stick position
+ * \param rc_setpoint - Desired setpoint based on stick position
+ * \return float - Setpoint rate in degs/sec
  */
 static float calculate_setpoint_rate(float rc_setpoint)
 {
   float rc_sp_abs = fabs(rc_setpoint);
 
   /* RC Expo */
-  rc_setpoint = ( rc_setpoint * power3(rc_sp_abs) * RC_EXPO ) + ( rc_setpoint * (1 - RC_EXPO) );
+  rc_setpoint = ( rc_setpoint * power3(rc_sp_abs) * rc_expo ) + ( rc_setpoint * (1 - rc_expo) );
 
   /* RC Rates */
-  float rc_rate = RC_RATE;
-  // if (rc_rate > 2.0f)
-  //   rc_rate += RC_RATE_INCREMENTAL * (rc_rate - 2.0f);
+  float rc_rate_local = rc_rate;
+  // if (rc_rate_local > 2.0f)
+  //   rc_rate_local += rc_rate_incremental * (rc_rate_local - 2.0f);
 
-  float angle_rate = 200.0f * rc_rate * rc_setpoint;
+  float angle_rate = 200.0f * rc_rate_local * rc_setpoint;
 
   /* Super Rates */
-  float rc_superfactor = 1.0f / (constrainf(1.0f - (rc_sp_abs * SUPER_RATE), 0.01f, 1.00f));
+  float rc_superfactor = 1.0f / (constrainf(1.0f - (rc_sp_abs * super_rate), 0.01f, 1.00f));
   angle_rate *= rc_superfactor;
 
   return angle_rate;
@@ -326,8 +302,8 @@ THD_FUNCTION(mainControllerThread, arg)
         imuEngineGetData(&IMU_ENGINE, gyro, IMU_ENGINE_GYRO);
 
         /* get setpoints from RC input */
-        float target_roll_angle = -1.0f * RADIO_TXRX.rc_deflections[RADIO_TXRX_ROLL] * BODY_TILT_MAX;
-        float target_pitch_angle = -1.0f * RADIO_TXRX.rc_deflections[RADIO_TXRX_PITCH] * BODY_TILT_MAX;
+        float target_roll_angle = -1.0f * RADIO_TXRX.rc_deflections[RADIO_TXRX_ROLL] * body_tilt_max;
+        float target_pitch_angle = -1.0f * RADIO_TXRX.rc_deflections[RADIO_TXRX_PITCH] * body_tilt_max;
         float target_yaw_rate = -1.0f * calculate_setpoint_rate(yaw_rc_sp);
 
         /* get setpoints as degree delta (target_angle - actual_euler_angle) */
@@ -335,8 +311,8 @@ THD_FUNCTION(mainControllerThread, arg)
         target_pitch_angle = target_pitch_angle - attitude[RADIO_TXRX_PITCH];
 
         /* multiple setpoint angles by "Level Strength" */
-        target_roll_angle  *= 5.0f; /* TODO: magic numbers */
-        target_pitch_angle *= 5.0f; /* TODO: magic numbers */
+        target_roll_angle  *= pid_level_strength;
+        target_pitch_angle *= pid_level_strength;
 
         /* run iteration of PID loop */
         float roll  = pidCompute(&roll_pid,  target_roll_angle,  gyro[IMU_ENGINE_ROLL]  / 1000.0f);
@@ -344,9 +320,9 @@ THD_FUNCTION(mainControllerThread, arg)
         float yaw   = pidCompute(&yaw_pid,   target_yaw_rate,    gyro[IMU_ENGINE_YAW]   / 1000.0f);
 
         /* limit the PID sums */
-        roll  = constrainf(roll,  -PID_SUM_LIMIT, PID_SUM_LIMIT) / 1000.0f;
-        pitch = constrainf(pitch, -PID_SUM_LIMIT, PID_SUM_LIMIT) / 1000.0f;
-        yaw   = constrainf(yaw,   -PID_SUM_LIMIT, PID_SUM_LIMIT) / 1000.0f;
+        roll  = constrainf(roll,  -pid_sum_limit, pid_sum_limit) / 1000.0f;
+        pitch = constrainf(pitch, -pid_sum_limit, pid_sum_limit) / 1000.0f;
+        yaw   = constrainf(yaw,   -pid_sum_limit, pid_sum_limit) / 1000.0f;
         // chprintf(
         //   (BaseSequentialStream*)&SD4,
         //   "throttle = %d\troll = %f\tpitch = %f\tyaw = %f\n", throttle_rc_sp, roll, pitch, yaw);
@@ -373,8 +349,7 @@ THD_FUNCTION(mainControllerThread, arg)
 
         motor_range = motor_max - motor_min;
 
-        /* TODO: remove when done
-         * applyMixerAdjustment() in betaflight */
+        /* applyMixerAdjustment() in betaflight */
         if(motor_range > 1.0f)
         {
           for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++)
@@ -388,8 +363,7 @@ THD_FUNCTION(mainControllerThread, arg)
         //   "range = %0.2f\tthrottle = %0.2f\t0 = %0.2f\t1 = %0.2f\t2 = %0.2f\t3 = %0.2f\n",
         //   motor_range, throttle_pcnt_f, motor_cycles[0], motor_cycles[1], motor_cycles[2], motor_cycles[3]);
 
-        /* TODO: remove when done
-         * applyMixToMotors() in betaflight */
+        /* applyMixToMotors() in betaflight */
         for(size_t i = 0 ; i < MOTOR_DRIVER_MOTORS ; i++)
         {
           float motor_output_f = motor_cycles[i] + throttle_pcnt_f;
@@ -430,11 +404,10 @@ THD_FUNCTION(mainControllerThread, arg)
     /* drive motors with appropriate duty cycles */
     motorDriverSetDutyCycles(&MOTOR_DRIVER, duty_cycles);
 
-    /* TODO: dont hardcode this value, put in config file */
     if(flight_state == CALIBRATING)
-      chThdSleepMicroseconds(301); /* when calibrating, match speed of IMU engine */
+      chThdSleepMicroseconds(imu_sampling_period_us); /* when calibrating, match speed of IMU engine */
     else
-      chThdSleepMilliseconds(1U);
+      chThdSleepMicroseconds(pid_period_us);
   }
 }
 
