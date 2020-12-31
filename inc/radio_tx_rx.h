@@ -49,8 +49,9 @@ typedef enum
   RADIO_TXRX_PITCH,
   RADIO_TXRX_THROTTLE,
   RADIO_TXRX_YAW,
-  RADIO_TXRX_VRA,
-  RADIO_TXRX_VRB,
+  RADIO_TXRX_SETPOINTS,
+  RADIO_TXRX_AUXA = RADIO_TXRX_SETPOINTS,
+  RADIO_TXRX_AUXB,
   RADIO_TXRX_UNKNOWN_A,
   RADIO_TXRX_UNKNOWN_B
 } radio_tx_rx_chan_def_t;
@@ -60,9 +61,11 @@ typedef enum
  */
 typedef struct
 {
-  radio_tx_rx_state_t state;              /*!< State of the radio transceiver */
-  radio_tx_rx_channel_t active_channel;   /*!< The next pulse corresponds to this channel */
-  uint32_t channels[RADIO_TXRX_CHANNELS]; /*!< The signal strength of each channel (in percent) */
+  radio_tx_rx_state_t state;                  /*!< State of the radio transceiver */
+  radio_tx_rx_channel_t active_channel;       /*!< The next pulse corresponds to this channel */
+  uint32_t channels[RADIO_TXRX_CHANNELS];     /*!< The signal strength of each channel (in percent) */
+  int32_t setpoints[RADIO_TXRX_SETPOINTS];    /*!< Channel setpoints (throttle interval : [1000, 2000] ; roll pitch yaw interval : [-500, 500]) */
+  float rc_deflections[RADIO_TXRX_SETPOINTS]; /*!< Normalized setpoints with interval [-1, 1] */
 } radio_tx_rx_handle_t;
 
 /* global handle for Radio Transceiver */

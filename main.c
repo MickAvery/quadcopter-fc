@@ -54,7 +54,8 @@ static void tsv(BaseSequentialStream* chp, int argc, char* argv[])
       mag[x] / 1000.0f, mag[y] / 1000.0f, mag[z] / 1000.0f,
       euler[x], euler[y], euler[z]);
 
-    chThdSleepMilliseconds(3);
+    // chThdSleepMilliseconds(3);
+    chThdSleepMicroseconds(500);
   }
 }
 
@@ -253,12 +254,11 @@ int main(void) {
       NULL,
       SHELL_WORKING_AREA_SIZE,
       "shell",
-      NORMALPRIO,
+      LOWPRIO,
       shellThread,
       (void*)&shellcfg);
 
     chThdWait(shelltp);
-    chThdSleepMilliseconds(500);
   }
 
   return 0;

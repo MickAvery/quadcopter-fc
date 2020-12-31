@@ -31,14 +31,19 @@ imu_engine_handle_t IMU_ENGINE;
 static lsm6dsl_handle_t lsm6dsl;
 static iis2mdc_handle_t iis2mdc;
 
+/* TODO: maybe place these in config file? */
 static const lsm6dsl_config_t lsm6dsl_cfg =
 {
-  &I2CD2,
-  LSM6DSL_104_Hz,
-  LSM6DSL_ACCEL_2G,
-  LSM6DSL_GYRO_250DPS
+  .i2c_drv     = &I2CD2,
+  .accel_odr   = LSM6DSL_ACCEL_208_Hz,
+  .gyro_odr    = LSM6DSL_GYRO_104_Hz,
+  .accel_fs    = LSM6DSL_ACCEL_8G,
+  .gyro_fs     = LSM6DSL_GYRO_500DPS,
+  .gyro_lpf_en = false,
+  .gyro_lpf_bw = LSM6DSL_GYRO_LPF_BW_D
 };
 
+/* TODO: maybe place these in config file? */
 static const iis2mdc_config_t iis2mdc_cfg =
 {
   &I2CD2,
@@ -81,9 +86,10 @@ THD_FUNCTION(imuEngineThread, arg)
 
     if(lsm6dslRead(&lsm6dsl, &readings) != LSM6DSL_OK) {
       /* failed to read accel and gyro data */
-    } else if(iis2mdcRead(&iis2mdc, &mag_readings) != IIS2MDC_STATUS_OK) {
-      /* failed to read mag data */
     } else {
+
+      /* read magnetometer data, doesn't matter if we succeed or not */
+      (void)iis2mdcRead(&iis2mdc, &mag_readings);
 
       /* euler angle measurements */
       /* https://engineering.stackexchange.com/questions/3348/calculating-pitch-yaw-and-roll-from-mag-acc-and-gyro-data */
@@ -98,9 +104,9 @@ THD_FUNCTION(imuEngineThread, arg)
       handle->accel_data[IMU_DATA_Y] = readings.acc_y;
       handle->accel_data[IMU_DATA_Z] = readings.acc_z;
 
-      handle->gyro_data[IMU_DATA_X] = readings.gyro_x;
-      handle->gyro_data[IMU_DATA_Y] = readings.gyro_y;
-      handle->gyro_data[IMU_DATA_Z] = readings.gyro_z;
+      handle->gyro_data[IMU_DATA_X] = readings.gyro_x - handle->gyro_offset[IMU_DATA_X];
+      handle->gyro_data[IMU_DATA_Y] = readings.gyro_y - handle->gyro_offset[IMU_DATA_Y];
+      handle->gyro_data[IMU_DATA_Z] = readings.gyro_z - handle->gyro_offset[IMU_DATA_Z];
 
       handle->mag_data[IMU_DATA_X] = mag_readings.mag_x;
       handle->mag_data[IMU_DATA_Y] = mag_readings.mag_y;
@@ -113,24 +119,26 @@ THD_FUNCTION(imuEngineThread, arg)
         first_reading = false;
 
       } else {
-        float roll_gyro = handle->euler_angles[IMU_ENGINE_ROLL] + readings.gyro_y * 0.00001f; /* roll (gyro / 1000 * 0.01 -> dt)*/
-        float pitch_gyro = handle->euler_angles[IMU_ENGINE_PITCH] + readings.gyro_x * 0.00001f; /* pitch (gyro / 1000 * 0.01 -> dt) */
+        // float roll_gyro = handle->euler_angles[IMU_ENGINE_ROLL] + readings.gyro_y * 0.00001f; /* roll (gyro / 1000 * 0.01 -> dt)*/
+        // float pitch_gyro = handle->euler_angles[IMU_ENGINE_PITCH] + readings.gyro_x * 0.00001f; /* pitch (gyro / 1000 * 0.01 -> dt) */
 
-        float roll_acc = atan2f(readings.acc_x, readings.acc_z) * 180.0f / M_PI;
-        float pitch_acc = atan2f(readings.acc_y, readings.acc_z) * 180.0f / M_PI;
+        // float roll_acc = atan2f(readings.acc_x, readings.acc_z) * 180.0f / M_PI;
+        // float pitch_acc = atan2f(readings.acc_y, readings.acc_z) * 180.0f / M_PI;
 
         /* apply complementary filter */
-        /* TODO: magic numbers */
-        handle->euler_angles[IMU_ENGINE_ROLL] = (roll_gyro * 0.55f) + (roll_acc * 0.45f);
-        handle->euler_angles[IMU_ENGINE_PITCH] = (pitch_gyro * 0.98f) + (pitch_acc * 0.02f);
+        /* TODO: config file, magic numbers */
+        // handle->euler_angles[IMU_ENGINE_ROLL] = (roll_gyro * 0.55f) + (roll_acc * 0.45f);
+        // handle->euler_angles[IMU_ENGINE_PITCH] = (pitch_gyro * 0.98f) + (pitch_acc * 0.02f);
+        handle->euler_angles[IMU_ENGINE_ROLL] = atan2f(readings.acc_x, readings.acc_z) * 180.0f / M_PI; /* roll */
+        handle->euler_angles[IMU_ENGINE_PITCH] = atan2f(readings.acc_y, readings.acc_z) * 180.0f / M_PI; /* pitch */
 
         /* convert angles to radians for yaw calculation */
         /* TODO: there's gotta be a better way to do this... */
-        float roll  = handle->euler_angles[IMU_ENGINE_ROLL] * M_PI / 180.0f;
-        float pitch = handle->euler_angles[IMU_ENGINE_PITCH] * M_PI / 180.0f;
-        float mag_x = mag_readings.mag_x;
-        float mag_y = mag_readings.mag_y;
-        float mag_z = mag_readings.mag_z;
+        // float roll  = handle->euler_angles[IMU_ENGINE_ROLL] * M_PI / 180.0f;
+        // float pitch = handle->euler_angles[IMU_ENGINE_PITCH] * M_PI / 180.0f;
+        // float mag_x = mag_readings.mag_x;
+        // float mag_y = mag_readings.mag_y;
+        // float mag_z = mag_readings.mag_z;
 
         /* finally, compute yaw */
         /* https://community.st.com/s/question/0D50X00009XkX3s/lsm303agr-conversion-accelerometers-and-magnetometers-output-to-pitch-roll-and-yaw */
@@ -140,16 +148,15 @@ THD_FUNCTION(imuEngineThread, arg)
         // float Bx3 = mag_x * cosf(pitch) + Bz2 * sinf(pitch);
         // handle->euler_angles[IMU_ENGINE_YAW] = atan2f(By2, Bx3);// * 180.0f / M_PI;
 
-        float y = (-mag_y * cosf(roll)) + (mag_z * sinf(roll));
-        float x = (mag_x * cosf(pitch)) + (mag_y * sinf(pitch) * sinf(roll)) + (mag_z * sinf(pitch) * cosf(roll));
-        handle->euler_angles[IMU_ENGINE_YAW] = atan2f(y, x) * 180.0f / M_PI;
+        // float y = (-mag_y * cosf(roll)) + (mag_z * sinf(roll));
+        // float x = (mag_x * cosf(pitch)) + (mag_y * sinf(pitch) * sinf(roll)) + (mag_z * sinf(pitch) * cosf(roll));
+        // handle->euler_angles[IMU_ENGINE_YAW] = atan2f(y, x) * 180.0f / M_PI;
       }
 
       osalMutexUnlock(&handle->lock);
 
-      /* TODO: this might need to be changed... */
-      chThdSleepMilliseconds(10);
-
+      /* TODO: dont hardcode this value, put in config file */
+      chThdSleepMicroseconds(301); /* Matches sampling period (rounded to nearest integer) */
     }
   }
 }
@@ -172,6 +179,10 @@ void imuEngineInit(imu_engine_handle_t* handle)
   } else {
 
     osalMutexObjectInit(&handle->lock);
+
+    for(size_t i = 0 ; i < IMU_DATA_AXES ; i++)
+      handle->gyro_offset[i] = 0.0f;
+
     handle->state = IMU_ENGINE_RUNNABLE;
 
   }
@@ -261,4 +272,40 @@ imu_engine_status_t imuEngineMagCalibrate(imu_engine_handle_t* handle, float off
   }
 
   return ret;
+}
+
+/**
+ * \brief Set angular rate offsets at zero-rate, these will be subtracted from angular rates read from sensor
+ * \param[in] handle - IMU Engine handle
+ * \param[in] ang_rate_offsets - offsets to apply to each axis
+ */
+void imuEngineZeroRateCalibrate(imu_engine_handle_t* handle, float ang_rate_offsets[IMU_DATA_AXES])
+{
+  osalDbgCheck(handle != NULL);
+  osalDbgCheck(handle->state == IMU_ENGINE_RUNNING);
+  osalDbgCheck(ang_rate_offsets != NULL);
+
+  for(size_t i = 0 ; i < IMU_DATA_AXES ; i++)
+    handle->gyro_offset[i] = ang_rate_offsets[i];
+}
+
+/**
+ * \brief Set linear velocity offsets at zero-rate
+ * \note These offsets will be stored directly to the sensors for on-chip offsetting 
+ * \param[in] handle - IMU Engine handle
+ * \param[in] lin_velocity_offsets - offsets to apply to each axis, in units of mg!
+ */
+void imuEngineZeroGCalibrate(imu_engine_handle_t* handle, float lin_velocity_offsets[IMU_DATA_AXES])
+{
+  osalDbgCheck(handle != NULL);
+  osalDbgCheck(handle->state == IMU_ENGINE_RUNNING);
+  osalDbgCheck(lin_velocity_offsets != NULL);
+
+  int8_t accel_offsets[IMU_DATA_AXES] = {0};
+
+  for(size_t i = 0 ; i < IMU_DATA_AXES ; i++)
+    accel_offsets[i] = (int8_t)(lin_velocity_offsets[i] / ACCEL_OFF_WEIGHT);
+
+  /* set offsets in sensor */
+  (void)lsm6dslSetAccelOffset(&lsm6dsl, accel_offsets);
 }
