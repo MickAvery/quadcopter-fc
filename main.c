@@ -5,6 +5,8 @@
  **/
 
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "ch.h"
 #include "hal.h"
@@ -189,11 +191,69 @@ static void mag_calibrate(BaseSequentialStream* chp, int argc, char* argv[])
   }
 }
 
+/**
+ * \notapi
+ * \brief Connect throttle input straight to ESC, bypassing the main controller.
+ *        Useful for things like motor testing and ESC calibration.
+ */
+static void throttle_bypass(BaseSequentialStream* chp, int argc, char* argv[])
+{
+  bool invalid_arg = false;
+
+  if(argc < 1)
+  {
+    invalid_arg = true;
+  }
+  else
+  {
+    char* arg = argv[0];
+
+    if(strncmp(arg, "enable", 6) == 0)
+    {
+      arg = argv[1];
+
+      if(argc < 2)
+      {
+        invalid_arg = true;
+      }
+      else if(strncmp(arg, "all", 3) == 0)
+      {
+        mainControllerThrottleBypass(&MAIN_CTRL, true, MOTOR_DRIVER_MOTORS);
+      }
+      else
+      {
+        uint32_t motor = (uint32_t)atoi(arg);
+
+        if(motor < MOTOR_DRIVER_MOTORS)
+          mainControllerThrottleBypass(&MAIN_CTRL, true, motor);
+        else
+          invalid_arg = true;
+      }
+    }
+    else if(strncmp(arg, "disable", 7) == 0)
+    {
+      mainControllerThrottleBypass(&MAIN_CTRL, false, 0);
+    }
+    else
+    {
+      invalid_arg = true;
+    }
+  }
+
+  if(invalid_arg)
+  {
+    chprintf(chp,
+      "Invalid argument\n"
+      "  throttle-bypass [enable/disable] [0, 1, 2, 3, all]\n");
+  }
+}
+
 static const ShellCommand shellcmds[] =
 {
   {"tsv", tsv},
   {"ppm", ppm_printout},
-  {"mag_calibrate", mag_calibrate},
+  {"mag-calibrate", mag_calibrate},
+  {"throttle-bypass", throttle_bypass},
   {NULL, NULL}
 };
 
