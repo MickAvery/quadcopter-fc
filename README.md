@@ -1,10 +1,16 @@
 # M.A.V. (multirotor aerial vehicle)
 > Quadcopter Flight Controller
 
-[![Build Status](https://travis-ci.org/MickAvery/quadcopter_flight_controller.svg)](https://travis-ci.org/MickAvery/quadcopter_flight_controller)
+[![Build Status](https://travis-ci.org/MickAvery/quadcopter_flight_controller.svg)](https://travis-ci.com/github/MickAvery/quadcopter-fc)
 
 ## Introduction
-As a student, what's the best way to get choosy firmware companies to notice you when you're not a nerd with straight-A's? Why, make a custom quadcopter flight controller, of course!
+One of the best ways to really learn firmware development is to develop your own flight controller. You'll get to learn things like:
+* Firmware and hardware design considerations
+* Driver development
+* Control theory
+* Automated testing and continuous integration
+
+So this is my attempt at that.
 
 ## Wiki
 [I suggest visiting the wiki that goes more in detail on the components of the quadctoper, as well as how they are tested.](https://github.com/MickAvery/quadcopter_flight_controller/wiki)
