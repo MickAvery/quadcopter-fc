@@ -1,7 +1,7 @@
 # M.A.V. (multirotor aerial vehicle)
 > Quadcopter Flight Controller
 
-[![Build Status](https://travis-ci.org/MickAvery/quadcopter_flight_controller.svg)](https://travis-ci.com/github/MickAvery/quadcopter-fc)
+[![Build Status](https://travis-ci.com/MickAvery/quadcopter-fc.svg?branch=master)](https://travis-ci.com/github/MickAvery/quadcopter-fc)
 
 ## Introduction
 One of the best ways to really learn firmware development is to develop your own flight controller. You'll get to learn things like:
